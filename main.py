@@ -1,5 +1,6 @@
 import os
 import shutil
+import time
 from typing import List, Optional
 import cv2
 import argparse
@@ -7,19 +8,25 @@ import re
 import csv
 
 from context import Context, FrameContext, Settings, Options
+from ocr import OCR
 from skywalker import SkyWalker, Result
 
-def write_result(ctx: Context, results: list[Result]):
+class Result2:
+    def __init__(self, res: Result, elapsed: int):
+        self.result = res
+        self.elapsed = elapsed
+
+def write_result(ctx: Context, results: list[Result2]):
     if len(results) == 0:
         return
 
     outFile = os.path.join(ctx.settings.output_path, 'results.csv')
     with open(outFile, 'w') as f:
         wrt = csv.writer(f, delimiter=',')
-        wrt.writerow(['name', 'time', 'temperature','profile','power','fan','mode'])
+        wrt.writerow(['name', 'time', 'temperature','profile', 'power',' fan', 'mode', 'elapsed (msec)'])
 
         for res in results:
-            wrt.writerow([res.name, res.time, res.temperature, res.profile, res.power, res.fan, res.mode])
+            wrt.writerow([res.result.name, res.result.time, res.result.temperature, res.result.profile, res.result.power, res.result.fan, res.result.mode, res.elapsed])
 
 
 def process_image(ctx: FrameContext) -> Optional[Result]:
@@ -69,10 +76,13 @@ def process_video(ctx: Context):
         if not ret:
             break
         
+        t1 = time.time()
         line = process_image(ctx.new_frame_context(f"frame_{cur_sec}", frame))
 
+        elapsed = int((time.time() - t1) * 1000)
+        
         if line is not None:
-            results.append(line)
+            results.append(Result2(line, elapsed))
 
         if options.count > 0:
             num_frames = num_frames - 1
@@ -99,6 +109,9 @@ def main(args):
     if not os.path.isfile(input_path):
         print(f"input file not found: {input_path}")
         return
+
+    # initialize paddle to isolate timing
+    s = OCR()
 
     context = Context(args)
     process_video(context)
