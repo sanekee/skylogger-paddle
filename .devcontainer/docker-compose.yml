@@ -1,0 +1,9 @@
+services:
+  paddle:
+    container_name: paddle
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../:/app/src
+      - ../data:/app/data
