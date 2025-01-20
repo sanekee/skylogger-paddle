@@ -1,12 +1,13 @@
 
-from typing import Optional
+import math
+from typing import Optional, Tuple
 import cv2
 from aoi import find_aoi
 from context import FrameContext
 from debug import _debug, _debug_displays, _debug_projection
 from display import Digit, Display
-from ocr import OCR
-from utils import calculate_projection, find_central_box_index, find_projection_rect_index
+from ocr import OCR, OCRResult
+from utils import Rect, calculate_projection, find_central_box_index, find_projection_rect_index
 
 class Section:
     def __init__(self, name: str, angle: float, length: float, skip_detect: bool = False):
@@ -40,7 +41,7 @@ class SkyWalker():
             "FAN": Section("FAN", 0.0, 4.67),
             "TIME": Section("TIME", 165.21, 4.48),
             "MODE_PREHEAT": Section("MODE_PREHEAT", 113.12, 4.24, True),
-            "MODE_ROAST": Section("MODE_ROAST", 84.61, 4.08, True),
+            "MODE_ROAST": Section("MODE_ROAST", 84.91, 3.6, True),
             "MODE_COOL": Section("MODE_COOL", 54.85, 4.77, True),
         }
 
@@ -55,56 +56,86 @@ class SkyWalker():
 
         return threshold_image
 
-    def __detect_displays(self, threshold_image) -> list[Display]:
-        aois = find_aoi(self.ctx, threshold_image, 100)
-
-        if not aois or len(aois) == 0:
+    def __detect_displays2(self, results: list[OCRResult]) -> list[Display]:
+        if not results or len(results) == 0:
             return None
 
+        max_height = max([res.box[3] for res in results])
+        results = [res for res in results if res.box[3] >= 0.4 * max_height]
         displays: dict[str, Display]= {}
 
-        cidx = find_central_box_index([aoi.rect for aoi in aois])
-        aoi = aois[cidx]
+        cidx = find_central_box_index([Rect(res.box) for res in results])
+        res = results[cidx]
 
-        displays['POWER'] = Display(self.ctx, 'POWER', aoi.rect, [Digit(self.ctx, 'POWER', i, rect) for i, rect in enumerate(aoi.items)])
+        display = Display(self.ctx, 'POWER', Rect(res.box), None)
+        display.value = res.value
+
+        displays['POWER'] = display
         
-        rects = [aoi.rect for aoi in aois]
+        rects = [Rect(res.box) for res in results]
         
         _debug(self.ctx, lambda: _debug_projection(self.ctx, rects))
+
+        def __debug_distance():
+            img = self.ctx.image.copy()
+            
+            cv2.circle(img, Rect(res.box).projected().center(), 3, (0, 255, 0), 3)
+
+            pt_checks = []
+            for section in self.__sections.values():
+                if section.name == 'POWER':
+                    continue
+
+                pt_check = calculate_projection(Rect(res.box), section.length, section.angle)
+                pt_checks.append(pt_check)
+                cv2.circle(img, pt_check, 3, (0, 0, 255), 3)
+
+            for rect in rects:
+
+                if rect == Rect(res.box):
+                    continue
+                cv2.rectangle(img, rect.to_list(), (0, 0, 255), 1)
+                pt2 = rect.projected().center()
+                cv2.rectangle(img, rect.projected().to_list(), (0, 0, 255), 1)
+
+                cv2.circle(img, pt2, 3, (0, 255, 255), 2)
+                min_distance = 9999999999999
+                pt = []
+                for pt_check in pt_checks:
+                    distance = int(math.sqrt(((pt_check[0] - pt2[0]) ** 2) + ((pt_check[1] - pt2[1]) ** 2)))
+                    min_distance = min(min_distance, distance)
+                    if distance == min_distance:
+                        pt = pt_check
+
+                cv2.line(img, pt, pt2, (0, 255,255), 1)
+                cv2.putText(img, f'{min_distance} - {rect.h * 2}', [pt2[0] + 5, pt2[1]], cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+            
+            self.ctx._write_step(f'distances', img)
+                
+        _debug(self.ctx, lambda: __debug_distance())
+
 
         for section in self.__sections.values():
             if section.name == 'POWER':
                 continue
 
-            pt_check = calculate_projection(aoi.rect.projected(), section.length, section.angle)
+            pt_check = calculate_projection(Rect(res.box), section.length, section.angle)
             idx2 = find_projection_rect_index(pt_check, rects)
 
             if idx2 is None:
                 continue
 
-            aoi2 = aois[idx2]
+            res2 = results[idx2]
 
-            display = Display(self.ctx, section.name, aoi2.rect, [Digit(self.ctx, section.name, i, rect) 
-                                                                  for i, rect in enumerate(aoi2.items)])
-            if section.name == "TIME":
-                display.fix_colon = True
+            display = Display(self.ctx, section.name, Rect(res2.box), None)
 
             display.skip_detect = section.skip_detect
+            display.value = res2.value
 
             displays[section.name] =  display
 
-        larger:dict[str, Display] = {}
-        for name, display in displays.items():
-            rect = display.rect 
-            rect.x = max(0, rect.x - 10)
-            rect.y = max(0, rect.y - 10)
-            rect.w = min(threshold_image.shape[1], rect.w + 10)
-            rect.h = min(threshold_image.shape[0], rect.h + 10)
-
-            larger[name] = Display(self.ctx, display.name, rect, display.digits)
-
-        return larger
-
+        return displays
+        
     @staticmethod
     def __parse_time(time_str: str) -> int:
         if time_str == "----":
@@ -129,11 +160,22 @@ class SkyWalker():
         return total_seconds
 
     def detect(self) -> Optional[Result]:
-        processed_image = self.__preprocess_image()
-
         self.ctx._write_step(f'frame', self.ctx.image)
 
-        displays = self.__detect_displays(processed_image)
+        results = OCR().detect_panel(self.ctx, self.ctx.image)
+        
+        def __debug_results():
+            img = self.ctx.image.copy()
+            for res in results:
+                box = res.box
+                cv2.rectangle(img, box, (0,255,0),1)
+                cv2.putText(img, f'{res.value}', [box[0], box[1] - 20], cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+
+            self.ctx._write_step(f'aois', img) 
+
+        _debug(self.ctx, lambda: __debug_results())
+
+        displays = self.__detect_displays2(results)
 
         if not displays:
             print('skywalker display not found')
@@ -149,8 +191,8 @@ class SkyWalker():
         
         res:Result = Result(self.ctx.name)
         for display in displays.values():
+            value = display.value
             if not display.skip_detect:
-                value = display.detect()
                 _debug(self.ctx, lambda: print(f'{self.ctx.name}-{display.name}: {value}'))
             else:
                 if display.name in ["MODE_PREHEAT", "MODE_ROAST", "MODE_COOL"]:
@@ -176,7 +218,7 @@ class SkyWalker():
                 print(f'{self.ctx.name} - {display.name} failed to convert result ({value}): {e}')
 
         def _write_diag():
-            img = self.ctx.image
+            img = self.ctx.image.copy()
             for display in displays.values():
                 box = display.rect.to_list()
                 cv2.rectangle(img, box, (0, 0, 255), 1)
