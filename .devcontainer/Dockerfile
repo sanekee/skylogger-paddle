@@ -31,7 +31,8 @@ RUN apt update && \
     opencv-data \
     tesseract-ocr \
     tesseract-ocr-all \
-    ffmpeg
+    ffmpeg \
+    sudo
 
 RUN pip install -U paddleocr lxml
 
