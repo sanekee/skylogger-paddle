@@ -42,7 +42,7 @@ class Display:
     def detect(self) -> str:
         self.ctx._write_step(f'{self.name}', self.__image)
 
-        res_str = OCR().detect(self.ctx, self.name, self.__image)
+        res_str = OCR().recognize(self.ctx, self.name, self.__image)
 
         return res_str
 

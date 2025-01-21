@@ -15,6 +15,7 @@ class Options:
         self.interval = args.interval
         self.rotate = args.rotate
         self.debug = args.debug
+        self.panel = args.panel
         
 class FrameContext:
     def __init__(self, name: str, image: cv2.Mat, options: Options, debug_path: str):

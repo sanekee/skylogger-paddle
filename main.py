@@ -50,7 +50,11 @@ def process_image(ctx: FrameContext) -> Optional[Result]:
             image = cv2.transpose(image, degree)
             image = cv2.flip(image, 0)
 
-        res = SkyWalker(ctx).detect()
+        if ctx.options.panel:
+            res = SkyWalker(ctx).detect_panel()
+        else:
+            res = SkyWalker(ctx).detect()
+
         if res is not None:
             return res
             
@@ -125,5 +129,6 @@ if __name__ == "__main__":
     parser.add_argument('--interval', type=int, default=30, required=False, help="Processing Interval.")
     parser.add_argument('--rotate', type=str, default='auto', required=False, help="Rotation (auto|<degree>).")
     parser.add_argument('--debug', type=bool, default=False, required=False, help="Write debug image")
+    parser.add_argument('--panel', type=bool, default=False, required=False, help="Uses paddle to detect panel")
     
     main(parser.parse_args())

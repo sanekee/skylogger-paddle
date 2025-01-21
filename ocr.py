@@ -29,7 +29,7 @@ class OCR:
         return cls.__instance
     
     @classmethod
-    def detect_row(cls, ctx: FrameContext, name: str, img: cv2.Mat) -> str:
+    def recognize(cls, ctx: FrameContext, name: str, img: cv2.Mat) -> str:
         result = cls.__ocr.ocr(img, det=False, cls=False)
 
         def __print_res():
