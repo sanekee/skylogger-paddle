@@ -1,10 +1,12 @@
-# Skylogger - Python, OpenCV2
+# Skylogger - Python, OpenCV2, PaddleOCR
 
 ## Overview
 
 An Itop Skywalker coffee roaster logger. 
 
-Extract roating profile using opencv2 to detect seven segment display digits from the coffee roaster control panel.
+[Manual Version](https://github.com/sanekee/skylogger-python)
+
+Extract roating profile using [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) to recognize seven segment display digits from the coffee roaster control panel.
 
 ```mermaid
 flowchart LR
@@ -14,7 +16,7 @@ flowchart LR
     C --> |Yes| F[Extract Image]
     F --> G[Detect Area of Interest #40;AOI#41;]
     G --> I[Grouping Displays]
-    I --> J[Detect SSD]
+    I --> J[Paddle OCR]
     J --> K[Return Result] --> C
 
 ```
