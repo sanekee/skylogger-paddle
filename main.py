@@ -10,6 +10,7 @@ import csv
 from context import Context, FrameContext, Settings, Options
 from ocr import OCR
 from skywalker import SkyWalker, Result
+from training import RecognitionTraining
 
 class Result2:
     def __init__(self, res: Result, elapsed: int):
@@ -99,6 +100,9 @@ def process_video(ctx: Context):
 
     write_result(ctx, results)
 
+    if ctx.options.training:
+        RecognitionTraining().close()
+
 def main(args):
     input_path = args.input_path
     output_path = args.output_path
@@ -118,6 +122,10 @@ def main(args):
     s = OCR()
 
     context = Context(args)
+
+    if args.training:
+        RecognitionTraining(args.output_path)
+
     process_video(context)
 
 if __name__ == "__main__":
@@ -130,5 +138,6 @@ if __name__ == "__main__":
     parser.add_argument('--rotate', type=str, default='auto', required=False, help="Rotation (auto|<degree>).")
     parser.add_argument('--debug', type=bool, default=False, required=False, help="Write debug image")
     parser.add_argument('--panel', type=bool, default=False, required=False, help="Uses paddle to detect panel")
+    parser.add_argument('--training', type=bool, default=False, required=False, help="Output paddle trainning set")
     
     main(parser.parse_args())

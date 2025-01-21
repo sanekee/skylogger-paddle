@@ -7,6 +7,7 @@ from context import FrameContext
 from debug import _debug, _debug_displays, _debug_projection
 from display import Digit, Display
 from ocr import OCR, OCRResult
+from training import RecognitionResult, RecognitionTraining
 from utils import Rect, calculate_projection, find_central_box_index, find_projection_rect_index
 
 class Section:
@@ -25,6 +26,7 @@ class Result:
         self.fan = 0
         self.time = 0
         self.mode = ""
+
         
 class SkyWalker():
     def __init__(self, ctx: FrameContext):
@@ -93,6 +95,20 @@ class SkyWalker():
             display.skip_detect = section.skip_detect
 
             displays[section.name] =  display
+
+        # fix digit size using maximum values from the more reliable displays (TEMPERATURE ,POWER and FAN)
+        digit_width, digit_height = 0, 0
+        for name in ["TEMPERATURE", 'POWER', 'FAN']:
+            if not name in displays:
+                continue
+
+            display = displays[name]
+            display_digit_width, display_digit_height = display.get_max_digit_size()
+            digit_height = max(digit_height, display_digit_height) 
+            digit_width = max(digit_width, display_digit_width) 
+
+        for display in displays.values():
+            display.fix_size(digit_width, digit_height)
 
         larger:dict[str, Display] = {}
         for name, display in displays.items():
@@ -238,6 +254,7 @@ class SkyWalker():
                     value = display.name.removeprefix('MODE_')
 
             orig_res[display.name] = value
+
             try:
                 match display.name:
                     case "TEMPERATURE":
@@ -255,6 +272,16 @@ class SkyWalker():
 
             except ValueError as e:
                 print(f'{self.ctx.name} - {display.name} failed to convert result ({value}): {e}')
+            
+            if self.ctx.options.training:
+                fix_value = value
+                if display.name == "TIME":
+                    fix_value = value.replace('.', '-')
+
+                if display.name == "PROFILE":
+                    fix_value = value.replace('O', '0')
+
+                RecognitionTraining().write_result(self.ctx.image, RecognitionResult(f'{self.ctx.name}_{display.name.lower()}', fix_value, display.rect.to_list()))
 
         def _write_diag():
             img = self.ctx.image
@@ -267,7 +294,6 @@ class SkyWalker():
             self.ctx._write_step(f'result', img)
 
         _debug(self.ctx, lambda: _write_diag())
-
 
         return res
 
@@ -340,6 +366,5 @@ class SkyWalker():
             self.ctx._write_step(f'result', img)
 
         _debug(self.ctx, lambda: _write_diag())
-
 
         return res

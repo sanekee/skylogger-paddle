@@ -38,6 +38,19 @@ class Display:
             max_w = max(digit.rect.w, max_w)
             max_h = max(digit.rect.h, max_h)
         return max_w, max_h
+    
+    def fix_size(self, width: int, height: int):
+        new_x, new_y, new_w, new_h = self.rect.to_list()
+        new_x2 = new_x + new_w
+        new_y2 = new_x + new_w
+        if self.rect.w < width:
+            new_x = int(max(0, new_x2 - width))
+            new_w = width
+        
+        new_y = int(max(0, new_y - (height - new_h) / 2))
+        new_h = height
+        self.rect = Rect([new_x, new_y, new_w, new_h])
+        self.__image = self.__extract_image()
 
     def detect(self) -> str:
         self.ctx._write_step(f'{self.name}', self.__image)
